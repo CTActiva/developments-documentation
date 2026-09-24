@@ -385,10 +385,8 @@ tbody td { padding: 10px 24px; vertical-align: top; }
   margin: 18px 0 6px;
 }
 .section-label:first-child { margin-top: 0; }
+/* ---------- Fixes de visibilidad y alineación para Monaco Editor ---------- */
 
-/* ---------- Fixes de visibilidad para Monaco Editor ---------- */
-
-/* Posicionamiento en capa superior para widgets emergentes y hovers */
 .monaco-editor .suggest-widget,
 .monaco-editor .monaco-hover,
 .monaco-editor .parameter-hints-widget,
@@ -396,34 +394,49 @@ tbody td { padding: 10px 24px; vertical-align: top; }
   z-index: 99999 !important;
 }
 
-/* Reestructuración de Flexbox en cada fila del desplegable */
+/* Forzar la fila en una única línea horizontal sin saltos */
 .monaco-editor .suggest-widget .monaco-list-row .contents {
   display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   align-items: center !important;
-  width: 100% !important;
-  overflow: visible !important;
+  height: 100% !important;
+  overflow: hidden !important;
 }
 
+/* Alinear el icono a la izquierda */
+.monaco-editor .suggest-widget .monaco-list-row .contents .icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  flex-shrink: 0 !important;
+  margin-right: 6px !important;
+}
+
+/* Contenedor principal de texto en línea */
 .monaco-editor .suggest-widget .monaco-list-row .contents .main {
-  display: flex !important;
+  display: inline-flex !important;
+  align-items: center !important;
   flex: 1 1 auto !important;
-  width: auto !important;
-  overflow: visible !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  line-height: normal !important;
 }
 
-/* Forzar visibilidad, color y tipografía de los textos de sugerencias */
+/* Forzar que las etiquetas de texto compartan renglón y no se recorten */
 .monaco-editor .suggest-widget .monaco-list-row .label-name,
 .monaco-editor .suggest-widget .monaco-list-row .monaco-highlighted-label,
 .monaco-editor .suggest-widget .monaco-list-row .monaco-highlighted-label span {
-  display: inline-block !important;
+  display: inline !important;
   color: #cccccc !important;
   font-size: 13px !important;
-  line-height: 1.4 !important;
+  line-height: normal !important;
+  white-space: nowrap !important;
   visibility: visible !important;
   opacity: 1 !important;
 }
 
-/* Resaltado del texto al navegar con las flechas sobre la lista */
+/* Color de texto enfocado */
 .monaco-editor .suggest-widget .monaco-list-row.focused .label-name,
 .monaco-editor .suggest-widget .monaco-list-row.focused .monaco-highlighted-label,
 .monaco-editor .suggest-widget .monaco-list-row.focused .monaco-highlighted-label span {
