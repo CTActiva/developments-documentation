@@ -146,9 +146,10 @@ function buildFolderTreeNode(folder) {
   const cVal = folder.cliente_id || folder.cliente;
 
   node.innerHTML = `
-    <div class="tree-label" data-carpeta-id="${escapeHtml(folderId)}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:6px; padding:4px 6px;">
+    <div class="tree-label" data-carpeta-id="${escapeHtml(folderId)}" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:4px; padding:4px 6px;">
       <span style="flex:1;">📁 ${escapeHtml(folder.nombre)}</span>
-      <button class="btn btn-sm btn-add-folder" data-add-for-parent="${escapeHtml(folderId)}" data-add-for-client="${escapeHtml(cVal)}" title="Añadir subcarpeta" style="padding:1px 6px; font-size:11px;">+</button>
+      <button class="btn btn-sm btn-add-folder" data-add-for-parent="${escapeHtml(folderId)}" data-add-for-client="${escapeHtml(cVal)}" title="Añadir subcarpeta" style="padding:1px 5px; font-size:11px;">+</button>
+      <button class="btn btn-sm btn-delete-folder" data-delete-folder-id="${escapeHtml(folderId)}" title="Borrar carpeta" style="padding:1px 5px; font-size:11px; color:var(--danger); border-color:var(--danger);">🗑</button>
       <span class="tree-count">${folderCount}</span>
     </div>
   `;
@@ -207,7 +208,42 @@ function renderTree() {
   });
 }
 
-el.tree.addEventListener("click", (event) => {
+el.tree.addEventListener("click", async (event) => {
+  // 1. Borrar carpeta
+  const deleteBtn = event.target.closest(".btn-delete-folder");
+  if (deleteBtn) {
+    event.stopPropagation();
+    const folderId = deleteBtn.dataset.deleteFolderId;
+    const folder = findFolder(folderId);
+    
+    if (!folder) return;
+
+    const isConfirmed = confirm(
+      `¿Estás seguro de que quieres eliminar la carpeta "${folder.nombre}"?\n` +
+      `Se borrarán también todas sus subcarpetas y desarrollos contenidos.`
+    );
+
+    if (isConfirmed) {
+      const { error } = await supabase.from("carpetas").delete().eq("id", folderId);
+
+      if (error) {
+        alert("Error al borrar la carpeta: " + error.message);
+        return;
+      }
+
+      // Si la carpeta borrada (o una de sus subcarpetas) estaba seleccionada, limpiamos el filtro
+      if (state.filter.carpetaId && getSubfolderIds(folderId).includes(String(state.filter.carpetaId))) {
+        state.filter.carpetaId = null;
+      }
+
+      // Volvemos a recargar datos y renderizar
+      await Promise.all([fetchEntries(), fetchLookups()]);
+      renderAll();
+    }
+    return;
+  }
+
+  // 2. Añadir subcarpeta
   const addBtn = event.target.closest(".btn-add-folder");
   if (addBtn) {
     event.stopPropagation();
@@ -217,6 +253,7 @@ el.tree.addEventListener("click", (event) => {
     return;
   }
 
+  // 3. Seleccionar carpeta
   const folderLabel = event.target.closest("[data-carpeta-id]");
   if (folderLabel) {
     const cId = folderLabel.dataset.carpetaId;
@@ -227,6 +264,7 @@ el.tree.addEventListener("click", (event) => {
     return;
   }
 
+  // 4. Seleccionar cliente
   const clientLabel = event.target.closest("[data-cliente-id]");
   if (clientLabel) {
     state.filter = { clienteId: clientLabel.dataset.clienteId, carpetaId: null };
@@ -452,10 +490,19 @@ function entryForm(entry) {
 function openDrawerCreate() {
   state.drawerMode = "create";
   state.activeEntry = null;
-  el.drawerEyebrow.textContent = "Nueva entrada";
+
+  // Si hay una carpeta seleccionada en el árbol, mostramos su ruta en el subtítulo
+  const activeFolderId = state.filter.carpetaId;
+  el.drawerEyebrow.textContent = activeFolderId 
+    ? getFolderPathString(activeFolderId) 
+    : "Nueva entrada";
+    
   el.drawerTitle.textContent = "Nueva entrada";
-  el.drawerBody.innerHTML = entryForm({});
+
+  // Le pasamos la carpeta activa para que la seleccione en el desplegable automáticamente
+  el.drawerBody.innerHTML = entryForm({ carpeta_id: activeFolderId });
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar</button>`;
+  
   document.getElementById("save-btn").addEventListener("click", () => submitForm(null));
   showDrawer();
 }
@@ -517,11 +564,52 @@ async function submitForm(editingId) {
 
 // ---------- Drawer: Crear Nueva Carpeta ----------
 
+// Helper para generar las opciones de carpetas padre filtradas por cliente
+function getParentFolderOptions(clientId, selectedParentId = null) {
+  if (!clientId) {
+    return '<option value="">(Selecciona primero un cliente)</option>';
+  }
+
+  // Filtrar carpetas que pertenecen únicamente a este cliente
+  const clientFolders = state.carpetas.filter((f) => {
+    const cVal = f.cliente_id || f.cliente;
+    return String(cVal) === String(clientId) || cVal === clientId;
+  });
+
+  if (clientFolders.length === 0) {
+    return '<option value="">(Ninguna - Será una carpeta raíz)</option>';
+  }
+
+  let html = '<option value="">(Ninguna - Carpeta Raíz)</option>';
+  html += clientFolders.map((f) => {
+    const selected = String(f.id) === String(selectedParentId) ? "selected" : "";
+    return `<option value="${escapeHtml(f.id)}" ${selected}>${escapeHtml(getFolderPathString(f.id))}</option>`;
+  }).join("");
+
+  return html;
+}
+
 function openDrawerCreateFolder(defaultClienteId = null, defaultParentId = null) {
   state.drawerMode = "create_folder";
   state.activeEntry = null;
 
-  el.drawerEyebrow.textContent = "Estructura";
+  // Si nos viene un parentId por defecto, resolvemos su cliente
+  if (defaultParentId) {
+    const parentFolder = findFolder(defaultParentId);
+    if (parentFolder) {
+      defaultClienteId = parentFolder.cliente_id || parentFolder.cliente;
+    }
+  }
+
+  // Subtítulo explicativo según si es subcarpeta o carpeta raíz
+  const parentFolder = defaultParentId ? findFolder(defaultParentId) : null;
+  const clientObj = state.clientes.find((c) => String(c.id) === String(defaultClienteId) || c.nombre === defaultClienteId);
+  const clientName = clientObj ? clientObj.nombre : "";
+
+  el.drawerEyebrow.textContent = parentFolder 
+    ? `Subcarpeta en: ${getFolderPathString(defaultParentId)}`
+    : clientName ? `Carpeta raíz para: ${clientName}` : "Estructura";
+
   el.drawerTitle.textContent = "Crear nueva carpeta";
 
   const clientOptions = state.clientes.map((c) => {
@@ -530,16 +618,11 @@ function openDrawerCreateFolder(defaultClienteId = null, defaultParentId = null)
     return `<option value="${escapeHtml(cId)}" ${selected}>${escapeHtml(c.nombre)}</option>`;
   }).join("");
 
-  const parentOptions = state.carpetas.map((f) => {
-    const selected = String(f.id) === String(defaultParentId) ? "selected" : "";
-    return `<option value="${escapeHtml(f.id)}" ${selected}>${escapeHtml(getFolderPathString(f.id))}</option>`;
-  }).join("");
-
   el.drawerBody.innerHTML = `
     <form id="folder-form">
       <div class="field">
         <label for="f-folder-nombre">Nombre de la carpeta</label>
-        <input id="f-folder-nombre" placeholder="p. ej. Workflows, Publishers…" />
+        <input id="f-folder-nombre" placeholder="p. ej. Workflows, Publishers…" autofocus />
       </div>
       <div class="field">
         <label for="f-folder-cliente">Cliente</label>
@@ -551,8 +634,7 @@ function openDrawerCreateFolder(defaultClienteId = null, defaultParentId = null)
       <div class="field">
         <label for="f-folder-parent">Carpeta padre (Opcional)</label>
         <select id="f-folder-parent">
-          <option value="">(Ninguna - Carpeta Raíz)</option>
-          ${parentOptions}
+          ${getParentFolderOptions(defaultClienteId, defaultParentId)}
         </select>
       </div>
       <p class="error-text" id="folder-form-error"></p>
@@ -561,10 +643,19 @@ function openDrawerCreateFolder(defaultClienteId = null, defaultParentId = null)
 
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-folder-btn">Crear carpeta</button>`;
 
+  const clientSelect = document.getElementById("f-folder-cliente");
+  const parentSelect = document.getElementById("f-folder-parent");
+
+  // Escuchar cambios por si el usuario decide cambiar manualmente de cliente
+  clientSelect.addEventListener("change", () => {
+    const selectedClientId = clientSelect.value;
+    parentSelect.innerHTML = getParentFolderOptions(selectedClientId, null);
+  });
+
   document.getElementById("save-folder-btn").addEventListener("click", async () => {
     const nombre = document.getElementById("f-folder-nombre").value.trim();
-    const cliente_id = document.getElementById("f-folder-cliente").value;
-    const parent_id = document.getElementById("f-folder-parent").value || null;
+    const cliente_id = clientSelect.value;
+    const parent_id = parentSelect.value || null;
 
     if (!nombre) {
       document.getElementById("folder-form-error").textContent = "El nombre de la carpeta es obligatorio.";
@@ -622,15 +713,6 @@ el.logoutBtn.addEventListener("click", async () => {
 (async function init() {
   const session = await requireSession();
   if (!session) return;
-
-  // Añadimos el botón de "+ Nueva carpeta" en la cabecera al lado de "+ Nueva entrada"
-  el.newEntryBtn.insertAdjacentHTML(
-    "beforebegin",
-    '<button class="btn" id="new-folder-btn">+ Nueva carpeta</button> '
-  );
-  document.getElementById("new-folder-btn").addEventListener("click", () => {
-    openDrawerCreateFolder(state.filter.clienteId, state.filter.carpetaId);
-  });
 
   await Promise.all([fetchEntries(), fetchLookups()]);
 
