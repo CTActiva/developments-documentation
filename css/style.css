@@ -387,3 +387,8 @@ tbody td { padding: 10px 24px; vertical-align: top; }
   margin: 18px 0 6px;
 }
 .section-label:first-child { margin-top: 0; }
+.monaco-editor .suggest-widget,
+.monaco-editor .monaco-hover,
+.monaco-aria-container {
+  z-index: 99999 !important;
+}

@@ -30,6 +30,36 @@ const el = {
   drawerClose: document.getElementById("drawer-close"),
 };
 
+// js/app.js (Línea 1, arriba del todo)
+
+window.MonacoEnvironment = {
+  getWorkerUrl: function (workerId, label) {
+    const getWorkerModule = (moduleUrl) =>
+      `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+        self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/' };
+        importScripts('${moduleUrl}');
+      `)}`;
+
+    if (label === 'typescript' || label === 'javascript') {
+      return getWorkerModule('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/language/typescript/ts.worker.js');
+    }
+    if (label === 'json') {
+      return getWorkerModule('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/language/json/json.worker.js');
+    }
+    if (label === 'html') {
+      return getWorkerModule('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/language/html/html.worker.js');
+    }
+    if (label === 'css') {
+      return getWorkerModule('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/language/css/css.worker.js');
+    }
+    return getWorkerModule('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/base/worker/workerMain.js');
+  }
+};
+
+// --- A partir de aquí sigue el resto de tu código normal de js/app.js ---
+import { supabase } from "./supabase.js";
+// ...
+
 // ---------- Utilidades ----------
 
 function escapeHtml(str) {
@@ -423,8 +453,7 @@ function renderFullDetailView() {
 
       <div class="field">
         <label for="detail-codigo">Código del desarrollo</label>
-        <div id="monaco-editor-container" style="height: 320px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;"></div>
-        <textarea id="detail-codigo" style="display:none;">${escapeHtml(entry.codigo_desarrollo || "")}</textarea>
+        <div id="monaco-editor-container" style="height: 320px; border: 1px solid var(--border); border-radius: var(--radius); position: relative;"></div>        <textarea id="detail-codigo" style="display:none;">${escapeHtml(entry.codigo_desarrollo || "")}</textarea>
       </div>
 
       <div class="section-label">Detalles de la entrada</div>
@@ -589,14 +618,20 @@ function renderFullDetailView() {
     
     window.require(['vs/editor/editor.main'], function () {
       const editorInstance = monaco.editor.create(container, {
-        value: hiddenTextarea.value,
-        language: getMonacoLang(selectLenguaje.value),
-        theme: 'vs-dark',
-        automaticLayout: true,
-        fontSize: 13,
-        minimap: { enabled: false }, // Opcional: minimapa a la derecha
-        scrollBeyondLastLine: false
-      });
+      value: hiddenTextarea.value,
+      language: getMonacoLang(selectLenguaje.value),
+      theme: 'vs-dark',
+      automaticLayout: true,
+      fontSize: 13,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+
+      // --- SOLUCIÓN VISIBILIDAD Y ERRORES ---
+      fixedOverflowWidgets: true, // Renderiza el menú de sugerencias por encima de cualquier contenedor
+      glyphMargin: true,          // Habilita el margen izquierdo donde aparecen los iconos de error
+      quickSuggestions: true,     // Activa la aparición automática de autocompletado
+      hover: { enabled: true }     // Activa las ventanas emergentes al pasar el ratón sobre un error
+    });
 
       // Actualiza el textarea oculto y dispara el checkDirty() al editar
       editorInstance.onDidChangeModelContent(() => {
