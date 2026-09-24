@@ -218,6 +218,20 @@ function openDrawerView(entry) {
   el.drawerFooter.innerHTML = `<button class="btn btn-primary" id="edit-btn">Editar</button>`;
   document.getElementById("edit-btn").addEventListener("click", () => openDrawerEdit(entry));
 
+  document.getElementById("delete-btn").addEventListener("click", async () => {
+    const isConfirmed = confirm("¿Estás seguro de que quieres eliminar esta entrada?");
+    if (isConfirmed) {
+      const { error } = await supabase.from("entradas").delete().eq("id", entry.id);
+      if (error) {
+        alert("Hubo un error al eliminar: " + error.message);
+        return;
+      }
+      await fetchEntries();
+      closeDrawer();
+      renderAll();
+    }
+  });
+
   showDrawer();
 }
 
@@ -234,63 +248,25 @@ function picklistField(key, label, list, currentValue) {
       <select id="f-${key}">
         <option value="">Selecciona…</option>
         ${picklistOptions(list, currentValue)}
-        <option value="__new__">+ Añadir ${label.toLowerCase()} nuevo…</option>
       </select>
-      <div class="picklist-new" id="f-${key}-new">
-        <input id="f-${key}-new-input" placeholder="Nombre" />
-        <button type="button" class="btn" id="f-${key}-new-btn">Añadir</button>
-      </div>
     </div>
   `;
 }
 
-function wirePicklist(key, table) {
-  const select = document.getElementById(`f-${key}`);
-  const row = document.getElementById(`f-${key}-new`);
-  const input = document.getElementById(`f-${key}-new-input`);
-  const btn = document.getElementById(`f-${key}-new-btn`);
-
-  select.addEventListener("change", () => {
-    if (select.value === "__new__") {
-      row.classList.add("open");
-      input.focus();
-    } else {
-      row.classList.remove("open");
-    }
-  });
-
-  async function addNew() {
-    const nombre = input.value.trim();
-    if (!nombre) return;
-    const { error } = await supabase.from(table).insert({ nombre });
-    if (error && !/duplicate|unique/i.test(error.message)) {
-      document.getElementById("form-error").textContent = error.message;
-      return;
-    }
-    await fetchLookups();
-    const exists = [...select.options].some((o) => o.value === nombre);
-    if (!exists) {
-      const opt = document.createElement("option");
-      opt.value = nombre;
-      opt.textContent = nombre;
-      select.insertBefore(opt, select.lastElementChild);
-    }
-    select.value = nombre;
-    row.classList.remove("open");
-    input.value = "";
-  }
-
-  btn.addEventListener("click", addNew);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addNew(); } });
-}
-
 function entryForm(entry) {
   const v = entry || {};
-  const encargadoOptions = new Set([
-    ...state.perfiles.map((p) => [p.nombre, p.apellidos].filter(Boolean).join(" ")).filter(Boolean),
-    ...distinctValues("encargado"),
-  ]);
-  const uniqueEncargados = [...encargadoOptions].sort((a, b) => a.localeCompare(b));
+  
+  // Extraemos y formateamos los nombres de los perfiles de Supabase
+  const encargadosFormateados = state.perfiles.map((p) => {
+    const nombreCompleto = [p.nombre, p.apellidos].filter(Boolean).join(" ");
+    // Si no tiene nombre/apellidos, podemos usar el id o dejarlo genérico
+    return { nombre: nombreCompleto || p.email || "Usuario sin nombre" };
+  }).filter((p) => p.nombre);
+
+  // Eliminamos posibles duplicados y ordenamos alfabéticamente
+  const uniqueEncargados = Array.from(new Set(encargadosFormateados.map(e => e.nombre)))
+    .map(nombre => ({ nombre }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   return `
     <form id="entry-form">
@@ -308,11 +284,10 @@ function entryForm(entry) {
         <label for="f-descripcion">Descripción</label>
         <textarea id="f-descripcion" rows="4">${escapeHtml(v.descripcion || "")}</textarea>
       </div>
-      <div class="field">
-        <label for="f-encargado">Encargado</label>
-        <input list="dl-encargado" id="f-encargado" value="${escapeHtml(v.encargado || "")}" placeholder="Elige o escribe un nombre" />
-        <datalist id="dl-encargado">${uniqueEncargados.map((e) => `<option value="${escapeHtml(e)}">`).join("")}</datalist>
-      </div>
+      
+      <!-- Se ha cambiado el input de encargado por un picklist restrictivo -->
+      ${picklistField("encargado", "Encargado", uniqueEncargados, v.encargado || "")}
+      
       <div class="field">
         <label for="f-fecha">Fecha</label>
         <input type="date" id="f-fecha" value="${v.fecha || new Date().toISOString().slice(0, 10)}" />
@@ -333,8 +308,6 @@ function openDrawerCreate() {
   el.drawerTitle.textContent = "Nueva entrada";
   el.drawerBody.innerHTML = entryForm({ cliente: state.filter.cliente });
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar</button>`;
-  wirePicklist("cliente", "clientes");
-  wirePicklist("lenguaje", "lenguajes");
   document.getElementById("save-btn").addEventListener("click", () => submitForm(null));
   showDrawer();
 }
@@ -346,8 +319,6 @@ function openDrawerEdit(entry) {
   el.drawerTitle.textContent = entry.codigo_desarrollo || "(sin código)";
   el.drawerBody.innerHTML = entryForm(entry);
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar cambios</button>`;
-  wirePicklist("cliente", "clientes");
-  wirePicklist("lenguaje", "lenguajes");
   document.getElementById("save-btn").addEventListener("click", () => submitForm(entry.id));
   showDrawer();
 }
@@ -357,15 +328,16 @@ async function submitForm(editingId) {
     cliente: document.getElementById("f-cliente").value.trim(),
     lenguaje: document.getElementById("f-lenguaje").value.trim() || null,
     ubicacion: document.getElementById("f-ubicacion").value.trim() || null,
-    codigo_desarrollo: document.getElementById("f-codigo").value,
+    codigo_desarrollo: document.getElementById("f-codigo").value.trim() || null,
     descripcion: document.getElementById("f-descripcion").value || null,
     encargado: document.getElementById("f-encargado").value.trim() || null,
     fecha: document.getElementById("f-fecha").value || null,
     tags: document.getElementById("f-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
   };
 
-  if (!payload.cliente) {
-    document.getElementById("form-error").textContent = "Cliente es obligatorio.";
+  // Validaciones obligatorias actualizadas
+  if (!payload.cliente || !payload.lenguaje || !payload.codigo_desarrollo) {
+    document.getElementById("form-error").textContent = "Cliente, Lenguaje y Código del desarrollo son obligatorios.";
     return;
   }
 
