@@ -58,6 +58,10 @@ button {
   color: var(--accent-contrast);
 }
 .btn-primary:hover { opacity: 0.92; }
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 .btn-danger { color: var(--danger); border-color: var(--danger); background: var(--surface); }
 
@@ -159,7 +163,7 @@ textarea { resize: vertical; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .desc-cell {

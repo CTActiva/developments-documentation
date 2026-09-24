@@ -7,7 +7,7 @@ const state = {
   perfiles: [],
   carpetas: [],
   filter: { clienteId: null, carpetaId: null },
-  expandedFolders: new Set(), // Mantiene el registro de carpetas desplegadas
+  expandedFolders: new Set(), // Registro de IDs de carpetas desplegadas
   viewMode: "list", // 'list' | 'detail'
   activeEntry: null,
 };
@@ -85,12 +85,27 @@ function getFolderPathString(folderId) {
   return parts.join(" / ");
 }
 
+function getSubfolderIds(folderId) {
+  const result = [String(folderId)];
+  const children = state.carpetas.filter((f) => String(f.parent_id) === String(folderId));
+  children.forEach((child) => {
+    result.push(...getSubfolderIds(child.id));
+  });
+  return result;
+}
+
 function getFolderIdsForClient(clientId) {
   const clientFolders = state.carpetas.filter((f) => {
     const cVal = f.cliente_id || f.cliente;
     return String(cVal) === String(clientId) || cVal === clientId;
   });
   return clientFolders.map((f) => String(f.id));
+}
+
+// Replega recursivamente una carpeta y todas sus subcarpetas hijas
+function collapseFolderAndDescendants(folderId) {
+  const allSubIds = getSubfolderIds(folderId);
+  allSubIds.forEach((id) => state.expandedFolders.delete(String(id)));
 }
 
 // ---------- Peticiones a Supabase ----------
@@ -120,7 +135,7 @@ async function fetchLookups() {
   state.carpetas = carpetas || [];
 }
 
-// ---------- Render: Árbol lateral (Desplegable y Filtrado) ----------
+// ---------- Render: Árbol lateral ----------
 
 function buildFolderTreeNode(folder) {
   const folderId = String(folder.id);
@@ -129,7 +144,7 @@ function buildFolderTreeNode(folder) {
   const hasChildren = childFolders.length > 0;
   const isExpanded = state.expandedFolders.has(folderId);
 
-  // Conteo de documentos SOLO asignados a esta carpeta
+  // Conteo de documentos pertenecientes a esta carpeta
   const folderCount = state.entries.filter((e) => String(e.carpeta_id) === folderId).length;
 
   const node = document.createElement("div");
@@ -166,12 +181,8 @@ function buildFolderTreeNode(folder) {
 function renderTree() {
   el.tree.innerHTML = "";
 
-  // Filtrar clientes para mostrar únicamente el cliente seleccionado o todos si ninguno está activo
-  const clientsToRender = state.filter.clienteId 
-    ? state.clientes.filter((c) => String(c.id) === String(state.filter.clienteId) || c.nombre === state.filter.clienteId)
-    : state.clientes;
-
-  clientsToRender.forEach((clienteObj) => {
+  // Todos los clientes permanecen visibles siempre en la barra lateral
+  state.clientes.forEach((clienteObj) => {
     const clientId = clienteObj.id || clienteObj.nombre;
     const clientName = clienteObj.nombre;
     const isClientActive = state.filter.clienteId === clientId && !state.filter.carpetaId;
@@ -210,13 +221,14 @@ function renderTree() {
 }
 
 el.tree.addEventListener("click", async (event) => {
-  // Desplegar / Plegar carpeta con botón ▶ / ▼
+  // 1. Botón ▶ / ▼ para desplegar o contraer
   const toggleBtn = event.target.closest(".tree-toggle");
   if (toggleBtn) {
     event.stopPropagation();
     const folderId = toggleBtn.dataset.toggleId;
     if (state.expandedFolders.has(folderId)) {
-      state.expandedFolders.delete(folderId);
+      // Replegar carpeta y limpiar el estado de sus subcarpetas hijas
+      collapseFolderAndDescendants(folderId);
     } else {
       state.expandedFolders.add(folderId);
     }
@@ -224,7 +236,7 @@ el.tree.addEventListener("click", async (event) => {
     return;
   }
 
-  // Borrar carpeta
+  // 2. Borrar carpeta
   const deleteBtn = event.target.closest(".btn-delete-folder");
   if (deleteBtn) {
     event.stopPropagation();
@@ -245,7 +257,7 @@ el.tree.addEventListener("click", async (event) => {
     return;
   }
 
-  // Añadir subcarpeta
+  // 3. Añadir subcarpeta
   const addBtn = event.target.closest(".btn-add-folder");
   if (addBtn) {
     event.stopPropagation();
@@ -253,21 +265,31 @@ el.tree.addEventListener("click", async (event) => {
     return;
   }
 
-  // Seleccionar carpeta
+  // 4. Seleccionar carpeta
   const folderLabel = event.target.closest("[data-carpeta-id]");
   if (folderLabel) {
     const cId = folderLabel.dataset.carpetaId;
     const folder = findFolder(cId);
     const clientVal = folder ? (folder.cliente_id || folder.cliente) : null;
     
+    // Cierra todas las subcarpetas descendientes de la seleccionada
+    const childIds = getSubfolderIds(cId).filter((id) => String(id) !== String(cId));
+    childIds.forEach((id) => state.expandedFolders.delete(String(id)));
+
+    // Asegura que la ruta hasta la carpeta seleccionada y la carpeta misma queden desplegadas
+    let curr = folder;
+    while (curr) {
+      state.expandedFolders.add(String(curr.id));
+      curr = curr.parent_id ? findFolder(curr.parent_id) : null;
+    }
+
     state.filter = { clienteId: clientVal, carpetaId: cId };
-    state.expandedFolders.add(cId); // Desplegar automáticamente la seleccionada
     state.viewMode = "list";
     renderAll();
     return;
   }
 
-  // Seleccionar cliente
+  // 5. Seleccionar cliente
   const clientLabel = event.target.closest("[data-cliente-id]");
   if (clientLabel) {
     state.filter = { clienteId: clientLabel.dataset.clienteId, carpetaId: null };
@@ -283,18 +305,14 @@ el.rootFilter.addEventListener("click", () => {
   renderAll();
 });
 
-// ---------- Render: Documentos pertenecientes únicamente a la carpeta actual ----------
+// ---------- Render: Filtrado de Entradas ----------
 
 function filteredEntries() {
+  // Las entradas SOLO se muestran si hay una carpeta concreta seleccionada
   if (state.filter.carpetaId) {
-    // Muestra SOLO las entradas asignadas a esta carpeta (no las subcarpetas)
     return state.entries.filter((e) => String(e.carpeta_id) === String(state.filter.carpetaId));
   }
-  if (state.filter.clienteId) {
-    const validFolderIds = getFolderIdsForClient(state.filter.clienteId);
-    return state.entries.filter((e) => validFolderIds.includes(String(e.carpeta_id)));
-  }
-  return state.entries;
+  return [];
 }
 
 function renderBreadcrumb() {
@@ -313,13 +331,12 @@ function renderList() {
   if (rows.length === 0) {
     el.entryList.innerHTML = `
       <div class="empty-state">
-        <h2>No hay entradas aquí todavía</h2>
-        <p>Crea la primera entrada con el botón superior derecho.</p>
+        <h2>${state.filter.carpetaId ? "No hay entradas en esta carpeta" : "Selecciona una carpeta"}</h2>
+        <p>${state.filter.carpetaId ? 'Crea la primera entrada con el botón "+ Nueva entrada".' : "Navega por las carpetas en el menú de la izquierda para ver sus documentos."}</p>
       </div>`;
     return;
   }
 
-  // Columnas: Descripción, Lenguaje, Ubicación, Encargado, Fecha, Etiquetas
   el.entryList.innerHTML = `
     <table>
       <thead>
@@ -348,7 +365,8 @@ function renderList() {
   `;
 }
 
-// Abre la vista completa de detalles
+// ---------- Vista completa e interactiva de la entrada ----------
+
 function openFullDetailView(entry) {
   state.viewMode = "detail";
   state.activeEntry = entry;
@@ -359,51 +377,191 @@ function renderFullDetailView() {
   const entry = state.activeEntry;
   if (!entry) return;
 
+  const currentFolder = findFolder(entry.carpeta_id);
+  const folderName = currentFolder ? currentFolder.nombre : "la carpeta";
   const folderPath = getFolderPathString(entry.carpeta_id);
+
+  // Opciones para desplegables
+  const carpetasOptions = state.carpetas.map((f) => {
+    const selected = String(f.id) === String(entry.carpeta_id) ? "selected" : "";
+    return `<option value="${escapeHtml(f.id)}" ${selected}>${escapeHtml(getFolderPathString(f.id))}</option>`;
+  }).join("");
+
+  const lenguajesOptions = state.lenguajes.map((l) => {
+    const selected = l.nombre === entry.lenguaje ? "selected" : "";
+    return `<option value="${escapeHtml(l.nombre)}" ${selected}>${escapeHtml(l.nombre)}</option>`;
+  }).join("");
+
+  const encargadosFormateados = state.perfiles.map((p) => {
+    const nombreCompleto = [p.nombre, p.apellidos].filter(Boolean).join(" ");
+    return { nombre: nombreCompleto || p.email || "Usuario sin nombre" };
+  }).filter((p) => p.nombre);
+
+  const uniqueEncargados = Array.from(new Set(encargadosFormateados.map((e) => e.nombre)))
+    .map((nombre) => ({ nombre }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  const encargadosOptions = uniqueEncargados.map((e) => {
+    const selected = e.nombre === entry.encargado ? "selected" : "";
+    return `<option value="${escapeHtml(e.nombre)}" ${selected}>${escapeHtml(e.nombre)}</option>`;
+  }).join("");
 
   el.entryList.innerHTML = `
     <div class="detail-view">
       <div class="detail-header">
-        <button class="btn" id="back-to-list-btn">← Volver a la carpeta</button>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-primary" id="detail-edit-btn">Editar</button>
+        <button class="btn" id="back-to-list-btn">← Volver a ${escapeHtml(folderName)}</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span id="detail-status" style="font-size:13px;"></span>
+          <button class="btn btn-primary" id="detail-save-btn" disabled>Guardar</button>
           <button class="btn btn-danger" id="detail-delete-btn">Borrar</button>
         </div>
       </div>
 
-      <div style="font-size:13px; color:var(--ink-muted); margin-bottom: 4px;">
-        ${escapeHtml(folderPath)}
+      <div style="font-size:13px; color:var(--ink-muted); margin-bottom: 16px;">
+        Ubicación: <strong>${escapeHtml(folderPath)}</strong>
       </div>
-      <h1 style="margin: 0 0 16px 0; font-size: 24px;">${escapeHtml(entry.codigo_desarrollo || "(sin código)")}</h1>
 
-      <div class="section-label">Descripción</div>
-      <p style="font-size: 15px; margin-top: 4px;">${escapeHtml(entry.descripcion) || '<span style="color:var(--ink-muted)">Sin descripción.</span>'}</p>
+      <div class="field">
+        <label for="detail-descripcion">Descripción</label>
+        <textarea id="detail-descripcion" rows="3" placeholder="Añade una descripción...">${escapeHtml(entry.descripcion || "")}</textarea>
+      </div>
 
-      <div class="section-label">Código del desarrollo</div>
-      <div class="code-block mono">${escapeHtml(entry.codigo_desarrollo) || "—"}</div>
+      <div class="field">
+        <label for="detail-codigo">Código del desarrollo</label>
+        <textarea id="detail-codigo" data-mono rows="8" placeholder="Escribe el código...">${escapeHtml(entry.codigo_desarrollo || "")}</textarea>
+      </div>
 
-      <div class="section-label">Detalles</div>
-      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; font-size:14px; background:var(--surface); padding:16px; border:1px solid var(--border); border-radius:var(--radius);">
-        <div><div style="color:var(--ink-muted); font-size:12px;">Carpeta</div>${escapeHtml(folderPath)}</div>
-        <div><div style="color:var(--ink-muted); font-size:12px;">Lenguaje</div>${escapeHtml(entry.lenguaje) || "—"}</div>
-        <div><div style="color:var(--ink-muted); font-size:12px;">Ubicación</div>${escapeHtml(entry.ubicacion) || "—"}</div>
-        <div><div style="color:var(--ink-muted); font-size:12px;">Encargado</div>${escapeHtml(entry.encargado) || "—"}</div>
-        <div><div style="color:var(--ink-muted); font-size:12px;">Fecha</div>${formatDate(entry.fecha)}</div>
-        <div><div style="color:var(--ink-muted); font-size:12px;">Etiquetas</div>${(entry.tags || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("") || "—"}</div>
+      <div class="section-label">Detalles de la entrada</div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; background:var(--surface); padding:16px; border:1px solid var(--border); border-radius:var(--radius);">
+        <div class="field" style="margin-bottom:0">
+          <label for="detail-carpeta">Carpeta</label>
+          <select id="detail-carpeta">${carpetasOptions}</select>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="detail-lenguaje">Lenguaje</label>
+          <select id="detail-lenguaje">${lenguajesOptions}</select>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="detail-ubicacion">Ubicación</label>
+          <input id="detail-ubicacion" value="${escapeHtml(entry.ubicacion || "")}" />
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="detail-encargado">Encargado</label>
+          <select id="detail-encargado">${encargadosOptions}</select>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="detail-fecha">Fecha</label>
+          <input type="date" id="detail-fecha" value="${entry.fecha || new Date().toISOString().slice(0, 10)}" />
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="detail-tags">Etiquetas (separadas por comas)</label>
+          <input id="detail-tags" value="${escapeHtml((entry.tags || []).join(", "))}" />
+        </div>
       </div>
 
       <div class="meta-row">
         <span>Creado por ${escapeHtml(displayName(entry.created_by, entry.created_by_email))} · ${formatDate(entry.created_at)}</span>
       </div>
+      ${entry.updated_at && entry.updated_at !== entry.created_at ? `
+      <div class="meta-row" style="border-top:none;padding-top:4px;margin-top:4px">
+        <span>Última edición por ${escapeHtml(displayName(entry.updated_by, entry.updated_by_email))} ·${formatDate(entry.updated_at)}</span>
+      </div>` : ""}
     </div>
   `;
+
+  const detailViewEl = el.entryList.querySelector(".detail-view");
+
+  // Detección de cambios para activar el botón Guardar
+  function checkDirty() {
+    const saveBtn = document.getElementById("detail-save-btn");
+    if (!saveBtn) return;
+
+    const currentFolder = document.getElementById("detail-carpeta")?.value || "";
+    const currentLenguaje = document.getElementById("detail-lenguaje")?.value || "";
+    const currentUbicacion = document.getElementById("detail-ubicacion")?.value.trim() || "";
+    const currentCodigo = document.getElementById("detail-codigo")?.value.trim() || "";
+    const currentDescripcion = document.getElementById("detail-descripcion")?.value.trim() || "";
+    const currentEncargado = document.getElementById("detail-encargado")?.value || "";
+    const currentFecha = document.getElementById("detail-fecha")?.value || "";
+    const currentTags = (document.getElementById("detail-tags")?.value || "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    const origTags = entry.tags || [];
+
+    const isChanged =
+      String(currentFolder) !== String(entry.carpeta_id || "") ||
+      currentLenguaje !== (entry.lenguaje || "") ||
+      currentUbicacion !== (entry.ubicacion || "") ||
+      currentCodigo !== (entry.codigo_desarrollo || "") ||
+      currentDescripcion !== (entry.descripcion || "") ||
+      currentEncargado !== (entry.encargado || "") ||
+      currentFecha !== (entry.fecha || "") ||
+      JSON.stringify(currentTags) !== JSON.stringify(origTags);
+
+    saveBtn.disabled = !isChanged;
+  }
+
+  detailViewEl.addEventListener("input", checkDirty);
+  detailViewEl.addEventListener("change", checkDirty);
 
   document.getElementById("back-to-list-btn").addEventListener("click", () => {
     state.viewMode = "list";
     renderAll();
   });
 
-  document.getElementById("detail-edit-btn").addEventListener("click", () => openDrawerEdit(entry));
+  document.getElementById("detail-save-btn").addEventListener("click", async () => {
+    const saveBtn = document.getElementById("detail-save-btn");
+    const statusText = document.getElementById("detail-status");
+    statusText.textContent = "";
+
+    const payload = {
+      carpeta_id: document.getElementById("detail-carpeta").value || null,
+      lenguaje: document.getElementById("detail-lenguaje").value.trim() || null,
+      ubicacion: document.getElementById("detail-ubicacion").value.trim() || null,
+      codigo_desarrollo: document.getElementById("detail-codigo").value.trim() || null,
+      descripcion: document.getElementById("detail-descripcion").value || null,
+      encargado: document.getElementById("detail-encargado").value.trim() || null,
+      fecha: document.getElementById("detail-fecha").value || null,
+      tags: document.getElementById("detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+    };
+
+    if (!payload.carpeta_id || !payload.lenguaje || !payload.codigo_desarrollo) {
+      statusText.style.color = "var(--danger)";
+      statusText.textContent = "Carpeta, Lenguaje y Código son obligatorios.";
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Guardando…";
+
+    const { error } = await supabase
+      .from("entradas")
+      .update(payload)
+      .eq("id", entry.id);
+
+    if (error) {
+      statusText.style.color = "var(--danger)";
+      statusText.textContent = error.message;
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Guardar";
+      return;
+    }
+
+    await fetchEntries();
+    const updatedEntry = state.entries.find((e) => String(e.id) === String(entry.id));
+    if (updatedEntry) {
+      state.activeEntry = updatedEntry;
+    }
+
+    statusText.style.color = "var(--accent)";
+    statusText.textContent = "Guardado con éxito.";
+    saveBtn.textContent = "Guardar";
+    saveBtn.disabled = true;
+
+    renderFullDetailView();
+  });
 
   document.getElementById("detail-delete-btn").addEventListener("click", async () => {
     if (confirm("¿Estás seguro de que quieres eliminar esta entrada?")) {
@@ -442,7 +600,7 @@ function renderAll() {
   }
 }
 
-// ---------- Drawer Forms (Edición / Creación) ----------
+// ---------- Modal Lateral (Creación de carpetas / entradas) ----------
 
 function picklistField(key, label, optionsHtml) {
   return `
@@ -531,16 +689,6 @@ function openDrawerCreate() {
 
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar</button>`;
   document.getElementById("save-btn").addEventListener("click", () => submitForm(null));
-  showDrawer();
-}
-
-function openDrawerEdit(entry) {
-  state.drawerMode = "edit";
-  el.drawerEyebrow.textContent = "Editando";
-  el.drawerTitle.textContent = entry.codigo_desarrollo || "(sin código)";
-  el.drawerBody.innerHTML = entryForm(entry);
-  el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar cambios</button>`;
-  document.getElementById("save-btn").addEventListener("click", () => submitForm(entry.id));
   showDrawer();
 }
 
