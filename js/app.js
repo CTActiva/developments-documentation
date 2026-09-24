@@ -350,6 +350,11 @@ function renderAll() {
   renderTree();
   renderBreadcrumb();
   renderList();
+
+  // El botón "Nueva entrada" sólo estará visible si hay una carpeta seleccionada
+  if (el.newEntryBtn) {
+    el.newEntryBtn.style.display = state.filter.carpetaId ? "inline-flex" : "none";
+  }
 }
 
 // ---------- Drawer: Ver detalles ----------
@@ -488,21 +493,29 @@ function entryForm(entry) {
 }
 
 function openDrawerCreate() {
+  const activeFolderId = state.filter.carpetaId;
+
+  // Solo se permite crear una entrada si hay una carpeta activa seleccionada
+  if (!activeFolderId) return;
+
   state.drawerMode = "create";
   state.activeEntry = null;
 
-  // Si hay una carpeta seleccionada en el árbol, mostramos su ruta en el subtítulo
-  const activeFolderId = state.filter.carpetaId;
-  el.drawerEyebrow.textContent = activeFolderId 
-    ? getFolderPathString(activeFolderId) 
-    : "Nueva entrada";
-    
+  el.drawerEyebrow.textContent = getFolderPathString(activeFolderId);
   el.drawerTitle.textContent = "Nueva entrada";
 
-  // Le pasamos la carpeta activa para que la seleccione en el desplegable automáticamente
   el.drawerBody.innerHTML = entryForm({ carpeta_id: activeFolderId });
+
+  // Deshabilitar el selector de carpeta para que quede fijo
+  const folderSelect = document.getElementById("f-carpeta");
+  if (folderSelect) {
+    folderSelect.disabled = true;
+    folderSelect.style.backgroundColor = "#f3f4f6";
+    folderSelect.style.cursor = "not-allowed";
+  }
+
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar</button>`;
-  
+
   document.getElementById("save-btn").addEventListener("click", () => submitForm(null));
   showDrawer();
 }
