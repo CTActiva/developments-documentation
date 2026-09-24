@@ -601,7 +601,7 @@ function openDrawerCreateFolder(defaultClienteId = null, defaultParentId = null)
     }
   }
 
-  // Subtítulo explicativo según si es subcarpeta o carpeta raíz
+  // Textos descriptivos para el encabezado del drawer
   const parentFolder = defaultParentId ? findFolder(defaultParentId) : null;
   const clientObj = state.clientes.find((c) => String(c.id) === String(defaultClienteId) || c.nombre === defaultClienteId);
   const clientName = clientObj ? clientObj.nombre : "";
@@ -626,14 +626,13 @@ function openDrawerCreateFolder(defaultClienteId = null, defaultParentId = null)
       </div>
       <div class="field">
         <label for="f-folder-cliente">Cliente</label>
-        <select id="f-folder-cliente">
-          <option value="">Selecciona cliente…</option>
+        <select id="f-folder-cliente" disabled style="background-color: #f3f4f6; cursor: not-allowed;">
           ${clientOptions}
         </select>
       </div>
       <div class="field">
-        <label for="f-folder-parent">Carpeta padre (Opcional)</label>
-        <select id="f-folder-parent">
+        <label for="f-folder-parent">Carpeta padre</label>
+        <select id="f-folder-parent" disabled style="background-color: #f3f4f6; cursor: not-allowed;">
           ${getParentFolderOptions(defaultClienteId, defaultParentId)}
         </select>
       </div>
@@ -645,12 +644,6 @@ function openDrawerCreateFolder(defaultClienteId = null, defaultParentId = null)
 
   const clientSelect = document.getElementById("f-folder-cliente");
   const parentSelect = document.getElementById("f-folder-parent");
-
-  // Escuchar cambios por si el usuario decide cambiar manualmente de cliente
-  clientSelect.addEventListener("change", () => {
-    const selectedClientId = clientSelect.value;
-    parentSelect.innerHTML = getParentFolderOptions(selectedClientId, null);
-  });
 
   document.getElementById("save-folder-btn").addEventListener("click", async () => {
     const nombre = document.getElementById("f-folder-nombre").value.trim();
