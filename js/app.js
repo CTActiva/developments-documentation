@@ -56,10 +56,6 @@ window.MonacoEnvironment = {
   }
 };
 
-// --- A partir de aquí sigue el resto de tu código normal de js/app.js ---
-import { supabase } from "./supabase.js";
-// ...
-
 // ---------- Utilidades ----------
 
 function escapeHtml(str) {
