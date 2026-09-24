@@ -382,11 +382,6 @@ function renderFullDetailView() {
   const folderPath = getFolderPathString(entry.carpeta_id);
 
   // Opciones para desplegables
-  const carpetasOptions = state.carpetas.map((f) => {
-    const selected = String(f.id) === String(entry.carpeta_id) ? "selected" : "";
-    return `<option value="${escapeHtml(f.id)}" ${selected}>${escapeHtml(getFolderPathString(f.id))}</option>`;
-  }).join("");
-
   const lenguajesOptions = state.lenguajes.map((l) => {
     const selected = l.nombre === entry.lenguaje ? "selected" : "";
     return `<option value="${escapeHtml(l.nombre)}" ${selected}>${escapeHtml(l.nombre)}</option>`;
@@ -434,10 +429,6 @@ function renderFullDetailView() {
       <div class="section-label">Detalles de la entrada</div>
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; background:var(--surface); padding:16px; border:1px solid var(--border); border-radius:var(--radius);">
         <div class="field" style="margin-bottom:0">
-          <label for="detail-carpeta">Carpeta</label>
-          <select id="detail-carpeta">${carpetasOptions}</select>
-        </div>
-        <div class="field" style="margin-bottom:0">
           <label for="detail-lenguaje">Lenguaje</label>
           <select id="detail-lenguaje">${lenguajesOptions}</select>
         </div>
@@ -453,7 +444,7 @@ function renderFullDetailView() {
           <label for="detail-fecha">Fecha</label>
           <input type="date" id="detail-fecha" value="${entry.fecha || new Date().toISOString().slice(0, 10)}" />
         </div>
-        <div class="field" style="margin-bottom:0">
+        <div class="field" style="margin-bottom:0; grid-column: span 2;">
           <label for="detail-tags">Etiquetas (separadas por comas)</label>
           <input id="detail-tags" value="${escapeHtml((entry.tags || []).join(", "))}" />
         </div>
@@ -471,12 +462,10 @@ function renderFullDetailView() {
 
   const detailViewEl = el.entryList.querySelector(".detail-view");
 
-  // Detección de cambios para activar el botón Guardar
   function checkDirty() {
     const saveBtn = document.getElementById("detail-save-btn");
     if (!saveBtn) return;
 
-    const currentFolder = document.getElementById("detail-carpeta")?.value || "";
     const currentLenguaje = document.getElementById("detail-lenguaje")?.value || "";
     const currentUbicacion = document.getElementById("detail-ubicacion")?.value.trim() || "";
     const currentCodigo = document.getElementById("detail-codigo")?.value.trim() || "";
@@ -491,7 +480,6 @@ function renderFullDetailView() {
     const origTags = entry.tags || [];
 
     const isChanged =
-      String(currentFolder) !== String(entry.carpeta_id || "") ||
       currentLenguaje !== (entry.lenguaje || "") ||
       currentUbicacion !== (entry.ubicacion || "") ||
       currentCodigo !== (entry.codigo_desarrollo || "") ||
@@ -517,7 +505,7 @@ function renderFullDetailView() {
     statusText.textContent = "";
 
     const payload = {
-      carpeta_id: document.getElementById("detail-carpeta").value || null,
+      carpeta_id: entry.carpeta_id,
       lenguaje: document.getElementById("detail-lenguaje").value.trim() || null,
       ubicacion: document.getElementById("detail-ubicacion").value.trim() || null,
       codigo_desarrollo: document.getElementById("detail-codigo").value.trim() || null,
@@ -527,9 +515,9 @@ function renderFullDetailView() {
       tags: document.getElementById("detail-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
     };
 
-    if (!payload.carpeta_id || !payload.lenguaje || !payload.codigo_desarrollo) {
+    if (!payload.lenguaje || !payload.codigo_desarrollo) {
       statusText.style.color = "var(--danger)";
-      statusText.textContent = "Carpeta, Lenguaje y Código son obligatorios.";
+      statusText.textContent = "Lenguaje y Código son obligatorios.";
       return;
     }
 

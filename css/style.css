@@ -156,7 +156,7 @@ textarea { resize: vertical; }
 /* Vista de detalle a pantalla completa */
 .detail-view {
   padding: 24px 32px;
-  max-width: 900px;
+  max-width: 1400px;
 }
 
 .detail-header {
