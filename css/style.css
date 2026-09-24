@@ -123,8 +123,6 @@ textarea { resize: vertical; }
   min-height: 1em;
 }
 
-/* ---------- App shell ---------- */
-
 /* ---------- App shell (Sidebar reactiva a la longitud del texto) ---------- */
 
 .app-shell {
@@ -387,25 +385,47 @@ tbody td { padding: 10px 24px; vertical-align: top; }
   margin: 18px 0 6px;
 }
 .section-label:first-child { margin-top: 0; }
+
+/* ---------- Fixes de visibilidad para Monaco Editor ---------- */
+
+/* Posicionamiento en capa superior para widgets emergentes y hovers */
 .monaco-editor .suggest-widget,
 .monaco-editor .monaco-hover,
+.monaco-editor .parameter-hints-widget,
 .monaco-aria-container {
   z-index: 99999 !important;
 }
 
-.monaco-editor .suggest-widget .monaco-list-row .label-name {
-  color: #cccccc !important;
+/* Reestructuración de Flexbox en cada fila del desplegable */
+.monaco-editor .suggest-widget .monaco-list-row .contents {
+  display: flex !important;
+  align-items: center !important;
+  width: 100% !important;
+  overflow: visible !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list-row .contents .main {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  width: auto !important;
+  overflow: visible !important;
+}
+
+/* Forzar visibilidad, color y tipografía de los textos de sugerencias */
+.monaco-editor .suggest-widget .monaco-list-row .label-name,
+.monaco-editor .suggest-widget .monaco-list-row .monaco-highlighted-label,
+.monaco-editor .suggest-widget .monaco-list-row .monaco-highlighted-label span {
   display: inline-block !important;
+  color: #cccccc !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
   visibility: visible !important;
   opacity: 1 !important;
 }
 
-/* Color del texto seleccionado en el menú desplegable */
-.monaco-editor .suggest-widget .monaco-list-row.focused .label-name {
+/* Resaltado del texto al navegar con las flechas sobre la lista */
+.monaco-editor .suggest-widget .monaco-list-row.focused .label-name,
+.monaco-editor .suggest-widget .monaco-list-row.focused .monaco-highlighted-label,
+.monaco-editor .suggest-widget .monaco-list-row.focused .monaco-highlighted-label span {
   color: #ffffff !important;
-}
-
-/* Asegurar que los contenedores de texto tengan dimensiones correctas */
-.monaco-editor .suggest-widget .monaco-list-row .monaco-highlighted-label {
-  color: inherit !important;
 }
