@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Catálogo de desarrollos — Iniciar sesión</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-panel">
+      <h1>Catálogo de desarrollos</h1>
+      <p class="sub">Entra con la cuenta que te hayan dado de alta.</p>
+
+      <form id="login-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%">Entrar</button>
+        <p class="error-text" id="error-text"></p>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>
