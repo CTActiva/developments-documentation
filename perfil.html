@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tu perfil — Catálogo de desarrollos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-panel" style="max-width:420px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h1 style="margin:0">Tu perfil</h1>
+        <a href="app.html" class="btn">← Volver</a>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">
+        <span id="avatar-preview"></span>
+        <div>
+          <label for="avatar-input" class="btn" style="display:inline-block">Cambiar foto</label>
+          <input type="file" id="avatar-input" accept="image/*" style="display:none" />
+        </div>
+      </div>
+
+      <form id="profile-form">
+        <div class="field">
+          <label for="f-nombre">Nombre</label>
+          <input id="f-nombre" />
+        </div>
+        <div class="field">
+          <label for="f-apellidos">Apellidos</label>
+          <input id="f-apellidos" />
+        </div>
+        <div class="field">
+          <label for="f-rol">Rol</label>
+          <input id="f-rol" placeholder="p. ej. Desarrollador, Consultor…" />
+        </div>
+        <div class="field">
+          <label for="f-email">Email</label>
+          <input id="f-email" disabled />
+        </div>
+        <button type="submit" class="btn btn-primary" id="save-btn" style="width:100%">Guardar cambios</button>
+        <p class="error-text" id="status-text"></p>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="js/perfil.js"></script>
+</body>
+</html>

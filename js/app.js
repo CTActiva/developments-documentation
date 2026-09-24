@@ -1,9 +1,11 @@
-import { supabase, requireSession } from "./supabase-client.js";
+import { supabase, requireSession, avatarHtml } from "./supabase-client.js";
 
 const state = {
   entries: [],
-  filter: { cliente: null, tipo: null },
-  openClientes: new Set(),
+  clientes: [],
+  lenguajes: [],
+  perfiles: [],
+  filter: { cliente: null },
   drawerMode: null, // 'view' | 'create' | 'edit'
   activeEntry: null,
 };
@@ -14,6 +16,7 @@ const el = {
   breadcrumb: document.getElementById("breadcrumb"),
   entryList: document.getElementById("entry-list"),
   sessionEmail: document.getElementById("session-email"),
+  sessionAvatar: document.getElementById("session-avatar"),
   logoutBtn: document.getElementById("logout-btn"),
   newEntryBtn: document.getElementById("new-entry-btn"),
   drawer: document.getElementById("drawer"),
@@ -41,7 +44,17 @@ function formatDate(value) {
 function distinctValues(field) {
   const set = new Set();
   state.entries.forEach((e) => { if (e[field]) set.add(e[field]); });
-  return [...set].sort((a, b) => a.localeCompare(b));
+  return [...set];
+}
+
+function displayName(userId, fallbackEmail) {
+  const p = state.perfiles.find((pf) => pf.id === userId);
+  if (p && (p.nombre || p.apellidos)) return [p.nombre, p.apellidos].filter(Boolean).join(" ");
+  return fallbackEmail || "—";
+}
+
+function ownPerfil(session) {
+  return state.perfiles.find((p) => p.id === session.user.id) || { id: session.user.id };
 }
 
 // ---------- Datos ----------
@@ -58,45 +71,39 @@ async function fetchEntries() {
   state.entries = data;
 }
 
+async function fetchLookups() {
+  const [{ data: clientes }, { data: lenguajes }, { data: perfiles }] = await Promise.all([
+    supabase.from("clientes").select("*").order("nombre"),
+    supabase.from("lenguajes").select("*").order("nombre"),
+    supabase.from("perfiles").select("*"),
+  ]);
+  state.clientes = clientes || [];
+  state.lenguajes = lenguajes || [];
+  state.perfiles = perfiles || [];
+}
+
 function buildTree() {
-  const tree = new Map(); // cliente -> Map(tipo -> count)
+  const tree = new Map(); // cliente -> count
   state.entries.forEach((e) => {
-    if (!tree.has(e.cliente)) tree.set(e.cliente, new Map());
-    const tipos = tree.get(e.cliente);
-    tipos.set(e.tipo_desarrollo, (tipos.get(e.tipo_desarrollo) || 0) + 1);
+    tree.set(e.cliente, (tree.get(e.cliente) || 0) + 1);
   });
   return tree;
 }
 
-// ---------- Render: árbol ----------
+// ---------- Render: árbol (un solo nivel, por cliente) ----------
 
 function renderTree() {
   const tree = buildTree();
-  el.rootFilter.classList.toggle("active-root", !state.filter.cliente);
   el.tree.innerHTML = "";
 
   [...tree.keys()].sort((a, b) => a.localeCompare(b)).forEach((cliente) => {
-    const tipos = tree.get(cliente);
-    const isOpen = state.openClientes.has(cliente);
-    const isActiveClient = state.filter.cliente === cliente;
-    const total = [...tipos.values()].reduce((a, b) => a + b, 0);
-
+    const isActive = state.filter.cliente === cliente;
     const node = document.createElement("div");
-    node.className = `tree-node tree-cliente${isOpen ? " open" : ""}${isActiveClient && !state.filter.tipo ? " active" : ""}`;
+    node.className = `tree-node tree-cliente${isActive ? " active" : ""}`;
     node.innerHTML = `
-      <div class="tree-label" data-cliente="${escapeHtml(cliente)}">
-        <span class="tree-caret" data-role="caret">▸</span>
+      <div class="tree-label" data-cliente="${escapeHtml(cliente)}" style="cursor:pointer">
         <span style="flex:1">${escapeHtml(cliente)}</span>
-        <span class="tree-count">${total}</span>
-      </div>
-      <div class="tree-tipos">
-        ${[...tipos.keys()].sort((a, b) => a.localeCompare(b)).map((tipo) => `
-          <div class="tree-tipo${isActiveClient && state.filter.tipo === tipo ? " active" : ""}"
-               data-cliente="${escapeHtml(cliente)}" data-tipo="${escapeHtml(tipo)}">
-            <span>${escapeHtml(tipo)}</span>
-            <span class="tree-count">${tipos.get(tipo)}</span>
-          </div>
-        `).join("")}
+        <span class="tree-count">${tree.get(cliente)}</span>
       </div>
     `;
     el.tree.appendChild(node);
@@ -104,49 +111,27 @@ function renderTree() {
 }
 
 el.tree.addEventListener("click", (event) => {
-  const tipoRow = event.target.closest(".tree-tipo");
-  if (tipoRow) {
-    state.filter = { cliente: tipoRow.dataset.cliente, tipo: tipoRow.dataset.tipo };
-    state.openClientes.add(tipoRow.dataset.cliente);
-    renderAll();
-    return;
-  }
   const label = event.target.closest(".tree-label");
-  if (label) {
-    const cliente = label.dataset.cliente;
-    const caretHit = event.target.closest('[data-role="caret"]');
-    if (caretHit) {
-      // Solo abre/cierra la carpeta, sin tocar el filtro activo.
-      state.openClientes.has(cliente) ? state.openClientes.delete(cliente) : state.openClientes.add(cliente);
-    } else {
-      // Clic en el nombre: filtra por este cliente y lo despliega.
-      state.filter = { cliente, tipo: null };
-      state.openClientes.add(cliente);
-    }
-    renderAll();
-  }
+  if (!label) return;
+  state.filter = { cliente: label.dataset.cliente };
+  renderAll();
 });
 
 el.rootFilter.addEventListener("click", () => {
-  state.filter = { cliente: null, tipo: null };
+  state.filter = { cliente: null };
   renderAll();
 });
 
 // ---------- Render: listado ----------
 
 function filteredEntries() {
-  return state.entries.filter((e) => {
-    if (state.filter.cliente && e.cliente !== state.filter.cliente) return false;
-    if (state.filter.tipo && e.tipo_desarrollo !== state.filter.tipo) return false;
-    return true;
-  });
+  return state.entries.filter((e) => !state.filter.cliente || e.cliente === state.filter.cliente);
 }
 
 function renderBreadcrumb() {
-  if (!state.filter.cliente) { el.breadcrumb.textContent = "Todos los clientes"; return; }
-  el.breadcrumb.innerHTML = state.filter.tipo
-    ? `${escapeHtml(state.filter.cliente)} <span style="color:var(--ink-muted)">/</span> <strong>${escapeHtml(state.filter.tipo)}</strong>`
-    : `<strong>${escapeHtml(state.filter.cliente)}</strong>`;
+  el.breadcrumb.innerHTML = state.filter.cliente
+    ? `<strong>${escapeHtml(state.filter.cliente)}</strong>`
+    : "Todos los clientes";
 }
 
 function renderList() {
@@ -164,7 +149,7 @@ function renderList() {
     <table>
       <thead>
         <tr>
-          <th>Código</th><th>Cliente</th><th>Tipo</th><th>Lenguaje</th><th>Encargado</th><th>Fecha</th><th>Etiquetas</th>
+          <th>Código</th><th>Cliente</th><th>Lenguaje</th><th>Ubicación</th><th>Encargado</th><th>Fecha</th><th>Etiquetas</th>
         </tr>
       </thead>
       <tbody>
@@ -172,8 +157,8 @@ function renderList() {
           <tr data-id="${e.id}">
             <td class="mono">${escapeHtml(e.codigo_desarrollo || "—")}</td>
             <td>${escapeHtml(e.cliente)}</td>
-            <td>${escapeHtml(e.tipo_desarrollo)}</td>
             <td>${escapeHtml(e.lenguaje || "—")}</td>
+            <td>${escapeHtml(e.ubicacion || "—")}</td>
             <td>${escapeHtml(e.encargado || "—")}</td>
             <td>${formatDate(e.fecha)}</td>
             <td>${(e.tags || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("")}</td>
@@ -202,7 +187,7 @@ function renderAll() {
 function openDrawerView(entry) {
   state.drawerMode = "view";
   state.activeEntry = entry;
-  el.drawerEyebrow.textContent = `${entry.cliente} · ${entry.tipo_desarrollo}`;
+  el.drawerEyebrow.textContent = [entry.cliente, entry.ubicacion].filter(Boolean).join(" · ");
   el.drawerTitle.textContent = entry.codigo_desarrollo || "(sin código)";
 
   el.drawerBody.innerHTML = `
@@ -215,17 +200,18 @@ function openDrawerView(entry) {
     <div class="section-label">Detalles</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
       <div><div style="color:var(--ink-muted)">Lenguaje</div>${escapeHtml(entry.lenguaje) || "—"}</div>
+      <div><div style="color:var(--ink-muted)">Ubicación</div>${escapeHtml(entry.ubicacion) || "—"}</div>
       <div><div style="color:var(--ink-muted)">Encargado</div>${escapeHtml(entry.encargado) || "—"}</div>
       <div><div style="color:var(--ink-muted)">Fecha</div>${formatDate(entry.fecha)}</div>
-      <div><div style="color:var(--ink-muted)">Etiquetas</div>${(entry.tags || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("") || "—"}</div>
+      <div style="grid-column:1/-1"><div style="color:var(--ink-muted)">Etiquetas</div>${(entry.tags || []).map((t) => `<span class="tag-pill">${escapeHtml(t)}</span>`).join("") || "—"}</div>
     </div>
 
     <div class="meta-row">
-      <span>Creado por ${escapeHtml(entry.created_by_email) || "—"} · ${formatDate(entry.created_at)}</span>
+      <span>Creado por ${escapeHtml(displayName(entry.created_by, entry.created_by_email))} · ${formatDate(entry.created_at)}</span>
     </div>
-    ${entry.updated_by_email && entry.updated_at !== entry.created_at ? `
+    ${entry.updated_at !== entry.created_at ? `
     <div class="meta-row" style="border-top:none;padding-top:4px;margin-top:4px">
-      <span>Última edición por ${escapeHtml(entry.updated_by_email)} · ${formatDate(entry.updated_at)}</span>
+      <span>Última edición por ${escapeHtml(displayName(entry.updated_by, entry.updated_by_email))} · ${formatDate(entry.updated_at)}</span>
     </div>` : ""}
   `;
 
@@ -237,29 +223,82 @@ function openDrawerView(entry) {
 
 // ---------- Drawer: crear / editar ----------
 
+function picklistOptions(list, currentValue) {
+  return list.map((o) => `<option value="${escapeHtml(o.nombre)}" ${o.nombre === currentValue ? "selected" : ""}>${escapeHtml(o.nombre)}</option>`).join("");
+}
+
+function picklistField(key, label, list, currentValue) {
+  return `
+    <div class="field">
+      <label for="f-${key}">${label}</label>
+      <select id="f-${key}">
+        <option value="">Selecciona…</option>
+        ${picklistOptions(list, currentValue)}
+        <option value="__new__">+ Añadir ${label.toLowerCase()} nuevo…</option>
+      </select>
+      <div class="picklist-new" id="f-${key}-new">
+        <input id="f-${key}-new-input" placeholder="Nombre" />
+        <button type="button" class="btn" id="f-${key}-new-btn">Añadir</button>
+      </div>
+    </div>
+  `;
+}
+
+function wirePicklist(key, table) {
+  const select = document.getElementById(`f-${key}`);
+  const row = document.getElementById(`f-${key}-new`);
+  const input = document.getElementById(`f-${key}-new-input`);
+  const btn = document.getElementById(`f-${key}-new-btn`);
+
+  select.addEventListener("change", () => {
+    if (select.value === "__new__") {
+      row.classList.add("open");
+      input.focus();
+    } else {
+      row.classList.remove("open");
+    }
+  });
+
+  async function addNew() {
+    const nombre = input.value.trim();
+    if (!nombre) return;
+    const { error } = await supabase.from(table).insert({ nombre });
+    if (error && !/duplicate|unique/i.test(error.message)) {
+      document.getElementById("form-error").textContent = error.message;
+      return;
+    }
+    await fetchLookups();
+    const exists = [...select.options].some((o) => o.value === nombre);
+    if (!exists) {
+      const opt = document.createElement("option");
+      opt.value = nombre;
+      opt.textContent = nombre;
+      select.insertBefore(opt, select.lastElementChild);
+    }
+    select.value = nombre;
+    row.classList.remove("open");
+    input.value = "";
+  }
+
+  btn.addEventListener("click", addNew);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addNew(); } });
+}
+
 function entryForm(entry) {
   const v = entry || {};
-  const clientes = distinctValues("cliente");
-  const tipos = distinctValues("tipo_desarrollo");
-  const lenguajes = distinctValues("lenguaje");
-  const encargados = distinctValues("encargado");
+  const encargadoOptions = new Set([
+    ...state.perfiles.map((p) => [p.nombre, p.apellidos].filter(Boolean).join(" ")).filter(Boolean),
+    ...distinctValues("encargado"),
+  ]);
+  const uniqueEncargados = [...encargadoOptions].sort((a, b) => a.localeCompare(b));
 
   return `
     <form id="entry-form">
+      ${picklistField("cliente", "Cliente", state.clientes, v.cliente || "")}
+      ${picklistField("lenguaje", "Lenguaje", state.lenguajes, v.lenguaje || "")}
       <div class="field">
-        <label for="f-cliente">Cliente</label>
-        <input list="dl-cliente" id="f-cliente" value="${escapeHtml(v.cliente || "")}" required />
-        <datalist id="dl-cliente">${clientes.map((c) => `<option value="${escapeHtml(c)}">`).join("")}</datalist>
-      </div>
-      <div class="field">
-        <label for="f-tipo">Tipo de desarrollo</label>
-        <input list="dl-tipo" id="f-tipo" value="${escapeHtml(v.tipo_desarrollo || "")}" required />
-        <datalist id="dl-tipo">${tipos.map((t) => `<option value="${escapeHtml(t)}">`).join("")}</datalist>
-      </div>
-      <div class="field">
-        <label for="f-lenguaje">Lenguaje</label>
-        <input list="dl-lenguaje" id="f-lenguaje" value="${escapeHtml(v.lenguaje || "")}" />
-        <datalist id="dl-lenguaje">${lenguajes.map((l) => `<option value="${escapeHtml(l)}">`).join("")}</datalist>
+        <label for="f-ubicacion">Ubicación</label>
+        <input id="f-ubicacion" value="${escapeHtml(v.ubicacion || "")}" placeholder="p. ej. servidor de producción, sede central…" />
       </div>
       <div class="field">
         <label for="f-codigo">Código del desarrollo</label>
@@ -271,8 +310,8 @@ function entryForm(entry) {
       </div>
       <div class="field">
         <label for="f-encargado">Encargado</label>
-        <input list="dl-encargado" id="f-encargado" value="${escapeHtml(v.encargado || "")}" />
-        <datalist id="dl-encargado">${encargados.map((e) => `<option value="${escapeHtml(e)}">`).join("")}</datalist>
+        <input list="dl-encargado" id="f-encargado" value="${escapeHtml(v.encargado || "")}" placeholder="Elige o escribe un nombre" />
+        <datalist id="dl-encargado">${uniqueEncargados.map((e) => `<option value="${escapeHtml(e)}">`).join("")}</datalist>
       </div>
       <div class="field">
         <label for="f-fecha">Fecha</label>
@@ -290,10 +329,12 @@ function entryForm(entry) {
 function openDrawerCreate() {
   state.drawerMode = "create";
   state.activeEntry = null;
-  el.drawerEyebrow.textContent = state.filter.cliente ? `${state.filter.cliente}${state.filter.tipo ? " · " + state.filter.tipo : ""}` : "Nueva entrada";
+  el.drawerEyebrow.textContent = state.filter.cliente || "Nueva entrada";
   el.drawerTitle.textContent = "Nueva entrada";
-  el.drawerBody.innerHTML = entryForm({ cliente: state.filter.cliente, tipo_desarrollo: state.filter.tipo });
+  el.drawerBody.innerHTML = entryForm({ cliente: state.filter.cliente });
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar</button>`;
+  wirePicklist("cliente", "clientes");
+  wirePicklist("lenguaje", "lenguajes");
   document.getElementById("save-btn").addEventListener("click", () => submitForm(null));
   showDrawer();
 }
@@ -305,6 +346,8 @@ function openDrawerEdit(entry) {
   el.drawerTitle.textContent = entry.codigo_desarrollo || "(sin código)";
   el.drawerBody.innerHTML = entryForm(entry);
   el.drawerFooter.innerHTML = `<span></span><button class="btn btn-primary" id="save-btn">Guardar cambios</button>`;
+  wirePicklist("cliente", "clientes");
+  wirePicklist("lenguaje", "lenguajes");
   document.getElementById("save-btn").addEventListener("click", () => submitForm(entry.id));
   showDrawer();
 }
@@ -312,8 +355,8 @@ function openDrawerEdit(entry) {
 async function submitForm(editingId) {
   const payload = {
     cliente: document.getElementById("f-cliente").value.trim(),
-    tipo_desarrollo: document.getElementById("f-tipo").value.trim(),
     lenguaje: document.getElementById("f-lenguaje").value.trim() || null,
+    ubicacion: document.getElementById("f-ubicacion").value.trim() || null,
     codigo_desarrollo: document.getElementById("f-codigo").value,
     descripcion: document.getElementById("f-descripcion").value || null,
     encargado: document.getElementById("f-encargado").value.trim() || null,
@@ -321,8 +364,8 @@ async function submitForm(editingId) {
     tags: document.getElementById("f-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
   };
 
-  if (!payload.cliente || !payload.tipo_desarrollo) {
-    document.getElementById("form-error").textContent = "Cliente y tipo de desarrollo son obligatorios.";
+  if (!payload.cliente) {
+    document.getElementById("form-error").textContent = "Cliente es obligatorio.";
     return;
   }
 
@@ -371,7 +414,11 @@ el.logoutBtn.addEventListener("click", async () => {
 (async function init() {
   const session = await requireSession();
   if (!session) return;
+
+  await Promise.all([fetchEntries(), fetchLookups()]);
+
   el.sessionEmail.textContent = session.user.email;
-  await fetchEntries();
+  el.sessionAvatar.innerHTML = avatarHtml(ownPerfil(session), "avatar-sm");
+
   renderAll();
 })();

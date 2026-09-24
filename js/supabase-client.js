@@ -18,3 +18,14 @@ export async function requireSession() {
   }
   return data.session;
 }
+
+// Genera el HTML de un avatar (imagen si hay avatar_url, círculo con inicial si no).
+export function avatarHtml(perfil, sizeClass) {
+  const source = (perfil?.nombre || perfil?.apellidos || "?").trim();
+  const initial = (source[0] || "?").toUpperCase();
+  if (perfil?.avatar_url) {
+    const v = perfil.updated_at ? new Date(perfil.updated_at).getTime() : "";
+    return `<img class="${sizeClass}" src="${perfil.avatar_url}${v ? "?v=" + v : ""}" alt="" />`;
+  }
+  return `<div class="${sizeClass} avatar-placeholder">${initial}</div>`;
+}
