@@ -423,7 +423,8 @@ function renderFullDetailView() {
 
       <div class="field">
         <label for="detail-codigo">Código del desarrollo</label>
-        <textarea id="detail-codigo" data-mono rows="8" placeholder="Escribe el código...">${escapeHtml(entry.codigo_desarrollo || "")}</textarea>
+        <div id="monaco-editor-container" style="height: 320px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;"></div>
+        <textarea id="detail-codigo" style="display:none;">${escapeHtml(entry.codigo_desarrollo || "")}</textarea>
       </div>
 
       <div class="section-label">Detalles de la entrada</div>
@@ -563,6 +564,56 @@ function renderFullDetailView() {
       renderAll();
     }
   });
+
+    // --- Inicialización de Monaco Editor ---
+  const container = document.getElementById("monaco-editor-container");
+  const hiddenTextarea = document.getElementById("detail-codigo");
+  const selectLenguaje = document.getElementById("detail-lenguaje");
+
+  // Mapeo simple de nombres a identificadores de lenguaje de Monaco
+  function getMonacoLang(lang) {
+    if (!lang) return "plaintext";
+    const l = lang.toLowerCase().trim();
+    if (l.includes("java") && !l.includes("script")) return "java";
+    if (l.includes("script") || l.includes("js")) return "javascript";
+    if (l.includes("py")) return "python";
+    if (l.includes("sql")) return "sql";
+    if (l.includes("html") || l.includes("xml")) return "html";
+    if (l.includes("css")) return "css";
+    if (l.includes("json")) return "json";
+    return "plaintext";
+  }
+
+  if (container && window.require) {
+    window.require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+    
+    window.require(['vs/editor/editor.main'], function () {
+      const editorInstance = monaco.editor.create(container, {
+        value: hiddenTextarea.value,
+        language: getMonacoLang(selectLenguaje.value),
+        theme: 'vs-dark',
+        automaticLayout: true,
+        fontSize: 13,
+        minimap: { enabled: false }, // Opcional: minimapa a la derecha
+        scrollBeyondLastLine: false
+      });
+
+      // Actualiza el textarea oculto y dispara el checkDirty() al editar
+      editorInstance.onDidChangeModelContent(() => {
+        hiddenTextarea.value = editorInstance.getValue();
+        checkDirty();
+      });
+
+      // Reacciona si se cambia el lenguaje en el <select>
+      selectLenguaje.addEventListener("change", () => {
+        monaco.editor.setModelLanguage(
+          editorInstance.getModel(),
+          getMonacoLang(selectLenguaje.value)
+        );
+        checkDirty();
+      });
+    });
+  }
 }
 
 el.entryList.addEventListener("click", (event) => {
