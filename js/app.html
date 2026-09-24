@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Catálogo de desarrollos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span class="title" id="root-filter" role="button" tabindex="0">Todos los clientes</span>
+      </div>
+      <div id="tree"></div>
+    </aside>
+
+    <main class="main">
+      <div class="main-header">
+        <div class="breadcrumb" id="breadcrumb">Todos los clientes</div>
+        <div class="header-actions">
+          <a href="perfil.html" class="profile-link" id="profile-link" title="Editar perfil">
+            <span id="session-avatar"></span>
+            <span class="session-email" id="session-email"></span>
+          </a>
+          <button class="btn" id="logout-btn">Cerrar sesión</button>
+          <button class="btn btn-primary" id="new-entry-btn">+ Nueva entrada</button>
+        </div>
+      </div>
+      <div class="entry-list" id="entry-list"></div>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-header">
+      <div>
+        <div style="font-size:12px;color:var(--ink-muted)" id="drawer-eyebrow"></div>
+        <h2 id="drawer-title" style="margin:2px 0 0;font-size:17px;"></h2>
+      </div>
+      <button class="btn" id="drawer-close" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+    <div class="drawer-footer" id="drawer-footer"></div>
+  </aside>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
