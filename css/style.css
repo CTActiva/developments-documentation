@@ -392,3 +392,20 @@ tbody td { padding: 10px 24px; vertical-align: top; }
 .monaco-aria-container {
   z-index: 99999 !important;
 }
+
+.monaco-editor .suggest-widget .monaco-list-row .label-name {
+  color: #cccccc !important;
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Color del texto seleccionado en el menú desplegable */
+.monaco-editor .suggest-widget .monaco-list-row.focused .label-name {
+  color: #ffffff !important;
+}
+
+/* Asegurar que los contenedores de texto tengan dimensiones correctas */
+.monaco-editor .suggest-widget .monaco-list-row .monaco-highlighted-label {
+  color: inherit !important;
+}
